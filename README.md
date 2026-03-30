@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Take-Home Test from Anthropic | Tye Davis
+The greatest technical marketing take home demo ever for my friends at Anthropic :) 
 
-## Getting Started
+## Narrative Choice Explained
 
-First, run the development server:
+A simple demo showing how to use Claude as an agent by combining the Messages API, Skills, code execution and the Files API.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+The goal was to create a real workflow, giving a sale rep instant competitive insight, and turn it into a usable artifact (a downloadable PDF battlecard).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What I am demonstrating
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+My goal was to show how to move beyond prompt-based interactions and build a system where Claude:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- dynamically loads capabilities through Skills
+- executes a workflow using code execution
+- generate a real artifact (PDF)
+- returns that artificat to the user
 
-## Learn More
+Instead of just generating text, Claude completes a task end-to-end, and in this case getting a rep a tangible asset to discuss or pass along to a prospect to help win an opportunity. 
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+At a high level:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. The user selects a competitor and clicks "Generate Battlecard"
+2. The frontend sends that context to a backend API route
+3. The backend calls Claude using the Anthropic SDK
+4. A PDF Skill is attached to the request
+5. Code execution is enabled so Claude can generate a file
+6. Claude returns a "file_id"
+7. The backend uses the Files API to download the PDF
+8. The file is saved locally and returned to the UI for download
 
-## Deploy on Vercel
+## Architecture 
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Four components were used to build this demo:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Messages API:** runtime (Claude acts as the agent)
+- **Skills:** capability layer (PDF Generation)
+- **Code execution:** action layer (creates the file)
+- **Files API:** delivery layer (returns the artifact)
+
+Summarized:
+
+- SDK = interface
+- Messages API = runtime
+- Skills = capability
+- Code execution = execution
+- Files API = delivery
