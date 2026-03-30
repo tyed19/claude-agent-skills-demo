@@ -1,140 +1,172 @@
-"use client";
+import Anthropic from "@anthropic-ai/sdk";
+import { NextResponse } from "next/server";
 
-import { useState } from "react";
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-export default function Home() {
-  const [loading, setLoading] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState("");
-  const [error, setError] = useState("");
-  const [competitor, setCompetitor] = useState("Cursor");
+function deepFindFileId(obj: any): any {
+  if (!obj || typeof obj !== "object") return null;
 
-  const competitors = [
-    "Cursor",
-    "GitHub Copilot",
-    "OpenAI Codex",
-    "Codeium",
-  ];
-
-  async function handleGenerate() {
-    setLoading(true);
-    setDownloadUrl("");
-    setError("");
-
-    try {
-      const res = await fetch("/api/ci-agent", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          competitor,
-          persona: "Engineering Manager",
-          dealContext: "AI coding tools evaluation",
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Something went wrong.");
-        setLoading(false);
-        return;
-      }
-
-      setDownloadUrl(data.downloadUrl || "");
-    } catch (err) {
-      setError("Request failed.");
-    } finally {
-      setLoading(false);
-    }
+  if ("file_id" in obj && obj.file_id) {
+    return obj.file_id;
   }
 
-  return (
-    <main className="min-h-screen bg-neutral-950 text-white px-6 py-16">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-10">
-          <p className="text-sm uppercase tracking-[0.25em] text-neutral-400">
-            Claude Agent Skills Demo
-          </p>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight">
-            Competitive Intelligence Agent
-          </h1>
-          <p className="mt-4 max-w-2xl text-neutral-300">
-            Generate a one-page battlecard artifact using Claude, Agent Skills,
-            code execution, and the Files API.
-          </p>
-        </div>
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = deepFindFileId(item);
+      if (found) return found;
+    }
+    return null;
+  }
 
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl">
-          <div className="space-y-5">
-            <div>
-              <p className="text-sm text-neutral-400 mb-2">Select Competitor</p>
-              <div className="flex flex-wrap gap-2">
-                {competitors.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setCompetitor(option)}
-                    className={`rounded-lg px-3 py-2 text-sm border transition ${
-                      competitor === option
-                        ? "bg-white text-black border-white"
-                        : "bg-neutral-800 text-white border-neutral-700 hover:bg-neutral-700"
-                    }`}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            </div>
+  for (const value of Object.values(obj)) {
+    const found = deepFindFileId(value);
+    if (found) return found;
+  }
 
-            <div>
-              <p className="text-sm text-neutral-400">Selected Competitor</p>
-              <p className="mt-1 text-lg font-medium">{competitor}</p>
-            </div>
+  return null;
+}
 
-            <div>
-              <p className="text-sm text-neutral-400">Audience</p>
-              <p className="mt-1 text-lg font-medium">Engineering Manager</p>
-            </div>
+function extractFileIdFromResponse(content: any[]): any {
+  for (const block of content) {
+    if (block?.type === "bash_code_execution_tool_result") {
+      const inner = block?.content?.content;
+      if (Array.isArray(inner)) {
+        for (const item of inner) {
+          if (item?.file_id) return item.file_id;
+        }
+      }
+    }
 
-            <div>
-              <p className="text-sm text-neutral-400">Context</p>
-              <p className="mt-1 text-lg font-medium">
-                AI coding tools evaluation
-              </p>
-            </div>
+    if (block?.type === "text_editor_code_execution_tool_result") {
+      const inner = block?.content?.content;
+      if (Array.isArray(inner)) {
+        for (const item of inner) {
+          if (item?.file_id) return item.file_id;
+        }
+      }
+    }
 
-            <button
-              onClick={handleGenerate}
-              disabled={loading}
-              className="mt-2 inline-flex items-center rounded-xl bg-white px-5 py-3 font-medium text-black transition hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? "Generating..." : "Generate Battlecard"}
-            </button>
+    const maybe = deepFindFileId(block);
+    if (maybe) return maybe;
+  }
 
-            {downloadUrl && (
-              <div className="mt-6 rounded-xl border border-emerald-800 bg-emerald-950 p-4">
-                <p className="mb-2 text-emerald-300">
-                  Artifact generated successfully.
-                </p>
-                <a
-                  href={downloadUrl}
-                  download
-                  className="font-medium text-white underline"
-                >
-                  Download PDF
-                </a>
-              </div>
-            )}
+  return null;
+}
 
-            {error && (
-              <div className="mt-6 rounded-xl border border-red-800 bg-red-950 p-4 text-red-300">
-                {error}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+export async function POST(req: Request) {
+  try {
+    console.log("API KEY PRESENT:", !!process.env.ANTHROPIC_API_KEY);
+
+    const { competitor, persona, dealContext } = await req.json();
+
+    const prompt = `
+Create a simple 1-page PDF battlecard about competing against ${competitor}.
+
+Audience:
+- ${persona}
+
+Context:
+- The rep is selling Claude Code
+- ${dealContext}
+
+Instructions:
+- Keep it concise
+- Plain text only
+- No icons
+- No charts
+- No custom styling
+- Include these sections:
+  1. Competitor strengths
+  2. Competitor weaknesses
+  3. How to position Claude Code
+  4. Three sales talk tracks
+- Generate the PDF file directly
+`.trim();
+
+    console.log("STARTING ANTHROPIC CALL");
+
+    const response = await anthropic.beta.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 6000,
+      betas: ["code-execution-2025-08-25", "skills-2025-10-02"],
+      container: {
+        skills: [
+          {
+            type: "anthropic",
+            skill_id: "pdf",
+            version: "latest",
+          },
+        ],
+      },
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      tools: [
+        {
+          type: "code_execution_20250825",
+          name: "code_execution",
+        },
+      ],
+    });
+
+    console.log("ANTHROPIC CALL FINISHED");
+    console.log("STOP REASON:", response.stop_reason);
+
+    const fileId = extractFileIdFromResponse(response.content as any[]);
+
+    const normalizedFileId =
+      typeof fileId === "string"
+        ? fileId
+        : typeof fileId === "object" &&
+            fileId !== null &&
+            "file_id" in (fileId as any)
+          ? String((fileId as any).file_id)
+          : `${fileId}`;
+
+    console.log("NORMALIZED FILE ID:", normalizedFileId);
+
+    if (
+      !normalizedFileId ||
+      normalizedFileId === "undefined" ||
+      normalizedFileId === "null"
+    ) {
+      return NextResponse.json(
+        {
+          error: "No usable file_id found in Claude response",
+          stop_reason: response.stop_reason,
+        },
+        { status: 500 }
+      );
+    }
+
+    const fileContent = await anthropic.beta.files.download(
+      normalizedFileId,
+      { betas: ["files-api-2025-04-14"] }
+    );
+
+    const arrayBuffer = await fileContent.arrayBuffer();
+
+    return new Response(arrayBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="battlecard.pdf"',
+      },
+    });
+  } catch (e: any) {
+    console.error("API ERROR:", e);
+
+    return NextResponse.json(
+      {
+        error: e?.message || "Unknown error",
+        stack: e?.stack || null,
+      },
+      { status: 500 }
+    );
+  }
 }

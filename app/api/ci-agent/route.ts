@@ -1,7 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -60,7 +58,6 @@ function extractFileIdFromResponse(content: any[]): any {
 export async function POST(req: Request) {
   try {
     console.log("API KEY PRESENT:", !!process.env.ANTHROPIC_API_KEY);
-    console.log("CWD:", process.cwd());
 
     const { competitor, persona, dealContext } = await req.json();
 
@@ -119,7 +116,8 @@ Instructions:
 
     console.log("ANTHROPIC CALL FINISHED");
     console.log("STOP REASON:", response.stop_reason);
-    console.dir(response.content, { depth: null });    const fileId = extractFileIdFromResponse(response.content as any[]);
+
+    const fileId = extractFileIdFromResponse(response.content as any[]);
 
     const normalizedFileId =
       typeof fileId === "string"
@@ -130,10 +128,7 @@ Instructions:
           ? String((fileId as any).file_id)
           : `${fileId}`;
 
-    console.log("EXTRACTED FILE ID RAW:", fileId);
-    console.log("EXTRACTED FILE ID TYPE:", typeof fileId);
     console.log("NORMALIZED FILE ID:", normalizedFileId);
-    console.log("NORMALIZED FILE ID TYPE:", typeof normalizedFileId);
 
     if (
       !normalizedFileId ||
@@ -148,26 +143,20 @@ Instructions:
         { status: 500 }
       );
     }
+
     const fileContent = await anthropic.beta.files.download(
       normalizedFileId,
       { betas: ["files-api-2025-04-14"] }
     );
 
-    const outputDir = path.join(process.cwd(), "public", "generated");
-    fs.mkdirSync(outputDir, { recursive: true });
-
-    const filePath = path.join(outputDir, "battlecard.pdf");
-    console.log("WRITING TO:", filePath);
-
     const arrayBuffer = await fileContent.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    fs.writeFileSync(filePath, buffer);
 
-    console.log("FILE WRITTEN OK");
-
-    return NextResponse.json({
-      ok: true,
-      downloadUrl: "/generated/battlecard.pdf",
+    return new Response(arrayBuffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'attachment; filename="battlecard.pdf"',
+      },
     });
   } catch (e: any) {
     console.error("API ERROR:", e);
